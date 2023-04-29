@@ -1,0 +1,236 @@
+LAB WORK 1 
+
+Name: Ishwari A/P S.Manickavasagam
+
+Matrix No: 22004773
+
+
+PART 1
+
+Data Analysis
+
+#importing neccessary modules
+import pandas as pd; #data processing
+import numpy as np; # arrays
+import matplotlib.pyplot as plt # visualization
+import seaborn as sb # visualization
+import unittest
+from termcolor import colored as cl # text custom
+
+from sklearn.preprocessing import LabelEncoder
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import MaxAbsScaler
+from sklearn.model_selection import train_test_split
+from sklearn.feature_selection import RFE
+from sklearn.linear_model import LinearRegression
+from sklearn.metrics import accuracy_score
+from sklearn import datasets
+from sklearn import metrics
+
+import random
+random.seed(0)
+
+#importing dataset
+url = 'https://raw.githubusercontent.com/intheblueside/House-Pricing-DataSet/main/House%20Pricing.csv';
+dataset = pd.read_csv(url)
+
+#display top of dataframe
+dataset.head()
+
+
+#see colum data types and non-missing values
+dataset.info()
+
+
+PART 2
+
+Data Preprocessing
+
+# drop null values
+dataset.dropna(inplace=True)
+print(cl(dataset.isnull().sum(), attrs = ['bold']))
+
+
+
+lb = LabelEncoder()
+dataset['mainroad'] = lb.fit_transform(dataset['mainroad'])
+dataset['guestroom'] = lb.fit_transform(dataset['guestroom'])
+dataset['basement'] = lb.fit_transform(dataset['basement'])
+dataset['hotwaterheating'] = lb.fit_transform(dataset['hotwaterheating'])
+dataset['airconditioning'] = lb.fit_transform(dataset['airconditioning'])
+dataset['prefarea'] = lb.fit_transform(dataset['prefarea'])
+dataset['furnishingstatus'] = lb.fit_transform(dataset['furnishingstatus'])
+
+
+dataset.head()
+
+#check all data types after handling categorized data (yes/no = 1/0)
+print(cl(dataset.dtypes))
+
+#fill missing values with 0
+dataset = dataset.fillna(0)
+dataset
+
+#see statistical data
+dataset.describe()
+
+#check again if any data type is in double
+# linear regression only supports int type
+print(cl(dataset.dtypes))
+
+#heatmap plot to see relation between two variables in a dataset
+#using seaborn package
+sb.heatmap(dataset.corr(), annot = True, cmap = 'magma')
+
+plt.savefig('heatmap.png')
+plt.show()
+
+#visualize data
+cols = ['price', 'area', 'bedrooms', 'bathrooms', 'mainroad', 'guestroom',
+        'stories', 'airconditioning']
+sb.pairplot(dataset[cols], height = 4)
+
+#visualize data using distribution plot between price and area
+sb.histplot(dataset['price'], color='r')
+plt.title('House Price Distribution', fontsize = 12)
+plt.xlabel('price', fontsize = 10)
+plt.ylabel('area', fontsize = 10)
+plt.xticks(fontsize=10)
+plt.yticks(fontsize=10)
+plt.savefig('histplot.png')
+plt.show()
+
+
+#feature scaling: scale data using standarization
+x = dataset['price']
+y = dataset['area']
+x = (x - x.mean()) / x.std()
+x = np.c_[np.ones(x.shape[0]), x]
+
+#split data into training and testing
+#specify training and testing data set have same num of rows
+np.random.seed(0)
+df_train, df_test = train_test_split(dataset, train_size=0.7, test_size=0.3, random_state=100)
+
+#using MinMax scaling
+scaler = MinMaxScaler()
+
+#apply scaler to all numerical columns (exclude yes no coulms)
+num_vars = ['area', 'bedrooms', 'bathrooms', 'stories', 'parking', 'price']
+
+df_train[num_vars] = scaler.fit_transform(df_train[num_vars])
+
+df_train.head()
+
+df_train.describe()
+
+#checking correlation coefficients to see which variable are hihgly correlated
+#using heatmap
+
+plt.figure(figsize = (16,10))
+sb.heatmap(df_train.corr(), annot = True, cmap="YlGnBu")
+plt.show()
+
+PART 3
+
+Regression Model Development
+
+#dividing X and Y sets for model building
+y_train = df_train.pop('price')
+X_train = df_train
+
+#using RFE with linear regression
+lm = LinearRegression()
+lm.fit(X_train, y_train)
+
+
+#running RFE
+rfe = RFE(lm)
+rfe = rfe.fit(X_train, y_train)
+
+list(zip(X_train.columns, rfe.support_, rfe.ranking_))
+
+col = X_train.columns[rfe.support_]
+col
+
+X_train.columns[~rfe.support_]
+
+#building model using statsmodel, for more detailed stats
+#creating X_Test df with rfe selected variables
+X_train_rfe = X_train[col]
+
+#adding constant variable
+import statsmodels.api as sm
+X_train_rfe = sm.add_constant(X_train_rfe)
+
+#run linear model
+lm = sm.OLS(y_train, X_train_rfe).fit()
+
+#print summary of linear model
+print(lm.summary())
+
+#calculate the vif (variance inflation factors) that affects the regression result
+from statsmodels.stats.outliers_influence import variance_inflation_factor
+
+vif = pd.DataFrame()
+X = X_train_rfe
+vif['Features'] = X.columns
+vif['VIF'] = [variance_inflation_factor(X.values, i) for i in range(X.shape[1])]
+
+vif['VIF'] = round(vif['VIF'],2)
+vif = vif.sort_values(by = "VIF", ascending = False)
+vif
+
+#check if error terms are normally distributed
+y_train_price = lm.predict(X_train_rfe)
+res = (y_train_price - y_train)
+
+#plot histogram to see error terms
+fig = plt.figure()
+sb.histplot((y_train - y_train_price), bins=20)
+fig.suptitle('Error Terms', fontsize = 16)
+plt.xlabel('Errors', fontsize = 14)
+
+#scatter plot
+plt.scatter(y_train,res)
+plt.show()
+
+PART 4
+
+Model Evaluation
+
+#model evaluation
+#apply scaling on test sets
+
+num_vars = ['area', 'stories', 'bathrooms', 'airconditioning', 'prefarea', 'parking', 'price']
+df_test[num_vars] = scaler.fit_transform(df_test[num_vars])
+
+#divide x_test and y_test
+y_test = df_test.pop('price')
+X_test = df_test
+
+#adding constant variable
+X_test = sm.add_constant(X_test)
+
+#make prediction
+#create new x_test_new df by dropping variables from x_test
+X_test_rfe = X_test[X_train_rfe.columns]
+
+#making prediction
+y_pred = lm.predict(X_test_rfe)
+
+from sklearn.metrics import r2_score
+r2_score(y_test, y_pred)
+
+#creating a scatterplot of real test values and predicted values 
+fig = plt.figure()
+plt.scatter(y_test, y_pred)
+fig.suptitle('y_test vs y_pred', fontsize=16)
+plt.xlabel('y_test', fontsize=14)
+plt.ylabel('y_pred', fontsize=14)
+
+#calculate metrics
+print(metrics.mean_absolute_error(y_test, y_pred)) #mae
+print(metrics.mean_squared_error(y_test, y_pred)) #mse
+print(np.sqrt(metrics.mean_squared_error(y_test, y_pred))) #rmse
